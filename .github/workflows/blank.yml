@@ -9,23 +9,45 @@ jobs:
   first-pipeline:
     runs-on: ubuntu-24.04
 
+    # Expose useful values to the job
+    env:
+      IMAGE_NAME: hello-world-nginx
+      BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+      COMMIT_SHA: ${{ github.sha }}
+
     steps:
       - name: Check out code
         uses: actions/checkout@v4
         with:
+          # On PRs, ensure we build the PR head; on manual runs, fallback to current ref
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Build Docker image
-        run: docker build -t hello-world-nginx:v1 .
+      - name: Compute image tag (branch + short sha)
+        id: meta
+        run: |
+          # sanitize branch for Docker tags: lowercase and replace non-safe chars with '-'
+          SANITIZED_BRANCH=$(echo "${BRANCH_NAME}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')
+          SHORT_SHA=${COMMIT_SHA::7}
+          IMAGE_TAG="${SANITIZED_BRANCH}-${SHORT_SHA}"
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "Built tag: ${IMAGE_NAME}:${IMAGE_TAG}"
+
+      - name: Build Docker image (tagged with branch+sha and latest)
+        run: |
+          docker build \
+            -t "${IMAGE_NAME}:${IMAGE_TAG}" \
+            -t "${IMAGE_NAME}:latest" \
+            .
 
       - name: Run container on port 8080
-        run: docker run -d --name hello-nginx -p 8080:80 hello-world-nginx:v1
+        run: |
+          docker run -d --name hello-nginx -p 8080:80 "${IMAGE_NAME}:${IMAGE_TAG}"
 
       - name: Verify container responds
         run: |
           sleep 2
           curl -fsS http://localhost:8080 | tee output.html
-          grep -q "Hello world" output.html
+          grep -qi "Hello world" output.html
 
       - name: Show running containers
         run: docker ps
