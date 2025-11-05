@@ -1,0 +1,89 @@
+name: K8s Smoke Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  k8s-smoke:
+    runs-on: [self-hosted, Windows]
+
+    # Use Windows PowerShell on your self-hosted runner
+    defaults:
+      run:
+        shell: powershell
+
+    # Point kubectl at your user kubeconfig (adjust the path if your username differs)
+    env:
+      KUBECONFIG: C:\Users\ieman\.kube\config
+      NAMESPACE: gha-smoke
+
+    steps:
+      - name: Check out repo (not strictly needed, but fine)
+        uses: actions/checkout@v4
+
+      - name: Show kubectl + current context
+        run: |
+          kubectl version --client=true
+          kubectl config get-contexts || echo "No contexts?"
+          kubectl config use-context k3d-mlops
+          kubectl config current-context
+          kubectl get nodes -o wide
+
+      - name: Create namespace (idempotent)
+        run: |
+          kubectl get ns $env:NAMESPACE 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) { kubectl create namespace $env:NAMESPACE }
+
+      - name: Apply test Deployment + Service (nginx)
+        run: |
+          $manifest = @"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-smoke
+  namespace: ${env:NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-smoke
+  template:
+    metadata:
+      labels:
+        app: nginx-smoke
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-smoke-svc
+  namespace: ${env:NAMESPACE}
+spec:
+  selector:
+    app: nginx-smoke
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+"@
+          $path = "$env:RUNNER_TEMP\nginx-smoke.yaml"
+          $manifest | Out-File -FilePath $path -Encoding utf8
+          kubectl apply -f $path
+
+      - name: Wait until Deployment is ready
+        run: |
+          kubectl rollout status deployment/nginx-smoke -n $env:NAMESPACE --timeout=90s
+          kubectl get deploy,po,svc -n $env:NAMESPACE -o wide
+
+      - name: Clean up (optional)
+        if: always()
+        run: |
+          kubectl delete -n $env:NAMESPACE -f "$env:RUNNER_TEMP\nginx-smoke.yaml" --ignore-not-found=true
+          # Keep the namespace; comment out next line if you want to keep it
+          # kubectl delete ns $env:NAMESPACE --ignore-not-found=true
