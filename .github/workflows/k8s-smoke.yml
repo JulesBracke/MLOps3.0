@@ -7,41 +7,42 @@ jobs:
   k8s-smoke:
     runs-on: [self-hosted, Windows]
 
-    # Use Windows PowerShell on your self-hosted runner
     defaults:
       run:
         shell: powershell
 
-    # Point kubectl at your user kubeconfig (adjust the path if your username differs)
+    # adjust the username if needed
     env:
       KUBECONFIG: C:\Users\ieman\.kube\config
       NAMESPACE: gha-smoke
 
     steps:
-      - name: Check out repo (not strictly needed, but fine)
+      - name: Check out repo
         uses: actions/checkout@v4
 
-      - name: Show kubectl + current context
+      - name: Show kubectl + context + nodes
         run: |
           kubectl version --client=true
-          kubectl config get-contexts || echo "No contexts?"
+          kubectl config get-contexts
           kubectl config use-context k3d-mlops
           kubectl config current-context
           kubectl get nodes -o wide
 
       - name: Create namespace (idempotent)
         run: |
-          kubectl get ns $env:NAMESPACE 2>$null | Out-Null
-          if ($LASTEXITCODE -ne 0) { kubectl create namespace $env:NAMESPACE }
+          if (-not (kubectl get ns $env:NAMESPACE --no-headers 2>$null)) {
+            kubectl create namespace $env:NAMESPACE
+          }
 
       - name: Apply test Deployment + Service (nginx)
         run: |
+          # IMPORTANT: the here-string must start at the first column
           $manifest = @"
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx-smoke
-  namespace: ${env:NAMESPACE}
+  namespace: $env:NAMESPACE
 spec:
   replicas: 1
   selector:
@@ -62,7 +63,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: nginx-smoke-svc
-  namespace: ${env:NAMESPACE}
+  namespace: $env:NAMESPACE
 spec:
   selector:
     app: nginx-smoke
@@ -73,7 +74,7 @@ spec:
     name: http
 "@
           $path = "$env:RUNNER_TEMP\nginx-smoke.yaml"
-          $manifest | Out-File -FilePath $path -Encoding utf8
+          Set-Content -Path $path -Value $manifest -Encoding UTF8
           kubectl apply -f $path
 
       - name: Wait until Deployment is ready
@@ -85,5 +86,4 @@ spec:
         if: always()
         run: |
           kubectl delete -n $env:NAMESPACE -f "$env:RUNNER_TEMP\nginx-smoke.yaml" --ignore-not-found=true
-          # Keep the namespace; comment out next line if you want to keep it
           # kubectl delete ns $env:NAMESPACE --ignore-not-found=true
