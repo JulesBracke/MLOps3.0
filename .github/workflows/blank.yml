@@ -10,3 +10,25 @@ jobs:
     steps:
       - name: Check out code repository
         uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t hello-world-nginx:v1 .
+
+      - name: Run container on port 8080
+        run: docker run -d --name hello-nginx -p 8080:80 hello-world-nginx:v1
+
+      - name: Verify container responds
+        run: |
+          sleep 2
+          curl -fsS http://localhost:8080 | tee output.html
+          grep -q "Hello world" output.html
+
+      - name: Show running containers
+        run: docker ps
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker logs hello-nginx || true
+          docker stop hello-nginx || true
+          docker rm hello-nginx || true
