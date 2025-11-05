@@ -30,10 +30,19 @@ jobs:
 
       - name: Create namespace (idempotent)
         run: |
-          kubectl get ns $env:NAMESPACE --no-headers 2>$null
-          if ($LASTEXITCODE -ne 0) {
+          $exists = $false
+          try {
+            # run and ignore stderr; do NOT let a non-zero exit stop the step
+            $null = kubectl get ns $env:NAMESPACE --no-headers 2>$null
+            if ($LASTEXITCODE -eq 0) { $exists = $true }
+          } catch {
+            $exists = $false
+          }
+
+          if (-not $exists) {
             Write-Host "Namespace '$env:NAMESPACE' not found; creating…"
             kubectl create namespace $env:NAMESPACE
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create namespace $env:NAMESPACE" }
           } else {
             Write-Host "Namespace '$env:NAMESPACE' already exists."
           }
