@@ -33,22 +33,26 @@ jobs:
       - name: Compute image tag (branch + short sha)
         run: |
           $sanitized = $env:BRANCH_NAME.ToLower() -replace '[^a-z0-9._-]','-'
-          $shortSha = $env:COMMIT_SHA.Substring(0,7)
-          $tag = "$sanitized-$shortSha"
+          $shortSha  = $env:COMMIT_SHA.Substring(0,7)
+          $tag       = "$sanitized-$shortSha"
+          if ([string]::IsNullOrWhiteSpace($tag)) { throw "IMAGE_TAG computed empty" }
           "IMAGE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "Built tag: $env:IMAGE_NAME:$tag"
+          Write-Host "IMAGE_TAG computed: $tag"
 
       - name: Build Docker image
         env:
           DOCKER_BUILDKIT: 0
-        run: docker build -t "$env:IMAGE_NAME:$env:IMAGE_TAG" -t "$env:IMAGE_NAME:latest" .
+        run: |
+          Write-Host "Building ${env:IMAGE_NAME}:${env:IMAGE_TAG}"
+          if ([string]::IsNullOrWhiteSpace(${env:IMAGE_TAG})) { throw "IMAGE_TAG missing in env" }
+          docker build -t ${env:IMAGE_NAME}:${env:IMAGE_TAG} -t ${env:IMAGE_NAME}:latest .
 
       - name: Run container on port 8080
         run: |
           if (docker ps -a --format '{{.Names}}' | Select-String -SimpleMatch $env:CONTAINER_NAME) {
             docker rm -f $env:CONTAINER_NAME | Out-Null
           }
-          docker run -d --name $env:CONTAINER_NAME -p 8080:80 "$env:IMAGE_NAME:$env:IMAGE_TAG"
+          docker run -d --name $env:CONTAINER_NAME -p 8080:80 ${env:IMAGE_NAME}:${env:IMAGE_TAG}
 
       - name: Verify container responds
         run: |
