@@ -52,19 +52,19 @@ jobs:
           if ([string]::IsNullOrWhiteSpace(${env:IMAGE_TAG})) { throw "IMAGE_TAG missing in env" }
           docker build -t ${env:IMAGE_NAME}:${env:IMAGE_TAG} -t ${env:IMAGE_NAME}:latest .
 
-      # ===== GHCR steps =====
+    # ===== GHCR steps (replace your current ones with these) =====
       - name: Set GHCR image name
         run: |
-          # ghcr requires lowercase owner/repo names
           $ownerLower = $env:GITHUB_REPOSITORY_OWNER.ToLower()
           $imageLower = $env:IMAGE_NAME.ToLower()
           $full = "ghcr.io/$ownerLower/$imageLower"
           "REGISTRY_IMAGE=$full" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Host "Registry image: $full"
 
-      - name: Login to GHCR
+      - name: Login to GHCR (explicit -p, no stdin)
         run: |
-          $env:GITHUB_TOKEN | docker login ghcr.io -u $env:GITHUB_ACTOR --password-stdin
+          docker logout ghcr.io 2>$null
+          docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
 
       - name: Tag image for GHCR
         run: |
@@ -76,7 +76,7 @@ jobs:
         run: |
           docker push ${env:REGISTRY_IMAGE}:${env:IMAGE_TAG}
           docker push ${env:REGISTRY_IMAGE}:latest
-      # ======================
+    # =============================================================
 
       - name: Run container on port 8080
         run: |
