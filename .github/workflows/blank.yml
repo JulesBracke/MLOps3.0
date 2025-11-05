@@ -9,7 +9,6 @@ jobs:
   first-pipeline:
     runs-on: [self-hosted, Windows]
 
-    # Use Windows PowerShell on this runner
     defaults:
       run:
         shell: powershell
@@ -40,15 +39,12 @@ jobs:
           Write-Host "Built tag: $env:IMAGE_NAME:$tag"
 
       - name: Build Docker image
-        run: |
-          docker build `
-            -t "$env:IMAGE_NAME:$env:IMAGE_TAG" `
-            -t "$env:IMAGE_NAME:latest" `
-            .
+        env:
+          DOCKER_BUILDKIT: 0
+        run: docker build -t "$env:IMAGE_NAME:$env:IMAGE_TAG" -t "$env:IMAGE_NAME:latest" .
 
       - name: Run container on port 8080
         run: |
-          # Remove any old container with the same name (ignore errors)
           if (docker ps -a --format '{{.Names}}' | Select-String -SimpleMatch $env:CONTAINER_NAME) {
             docker rm -f $env:CONTAINER_NAME | Out-Null
           }
