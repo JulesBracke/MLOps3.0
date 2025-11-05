@@ -2,11 +2,12 @@ name: Starting Pipeline
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: ["main"]
 
 jobs:
   first-pipeline:
     runs-on: ubuntu-24.04
-
     steps:
       - name: Check out code repository
         uses: actions/checkout@v4
@@ -23,12 +24,8 @@ jobs:
           curl -fsS http://localhost:8080 | tee output.html
           grep -q "Hello world" output.html
 
-      - name: Show running containers
-        run: docker ps
-
       - name: Cleanup
         if: always()
         run: |
-          docker logs hello-nginx || true
           docker stop hello-nginx || true
           docker rm hello-nginx || true
